@@ -1,11 +1,7 @@
 import React, { useState } from 'react';
 import { createWalletClient, custom } from 'viem';
 import { mainnet } from 'viem/chains';
-import { eip7702Actions } from 'viem/experimental';
 
-// Use valid hex-formatted addresses here, otherwise Viem will crash before sending to the wallet!
-// (These are just dummy valid formats for testing the UI pop-up)
-const DELEGATOR_CONTRACT_ADDRESS = '0x0000000000000000000000000000000000000001'; 
 const TARGET_CONTRACT_ADDRESS = '0x0000000000000000000000000000000000000002';
 
 export default function App() {
@@ -13,18 +9,18 @@ export default function App() {
   const [txHash, setTxHash] = useState('');
   const [status, setStatus] = useState('Disconnected');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [debugMsg, setDebugMsg] = useState(''); // NEW DEBUG STATE
+  const [debugMsg, setDebugMsg] = useState('');
 
   const getWalletClient = () => {
     if (!window.ethereum) throw new Error("No crypto wallet found!");
     return createWalletClient({
       chain: mainnet,
       transport: custom(window.ethereum)
-    }).extend(eip7702Actions);
+    });
   };
 
   const connectWallet = async () => {
-    setDebugMsg(''); // Clear previous errors
+    setDebugMsg('');
     try {
       const client = getWalletClient();
       const [address] = await client.requestAddresses();
@@ -36,38 +32,36 @@ export default function App() {
     }
   };
 
-  const executeDelegatedTransaction = async () => {
+  const executeBatchedTransaction = async () => {
     if (!account) return;
     setIsProcessing(true);
-    setDebugMsg(''); // Clear previous errors
-    setStatus('Awaiting EIP-7702 Authorization Signature...');
+    setDebugMsg(''); 
+    setStatus('Sending Batch Request to Wallet...');
 
     try {
       const client = getWalletClient();
 
-      // 1. Prompt Trust Wallet to sign the authorization tuple
-      const authorization = await client.signAuthorization({
-        account,
-        contractAddress: DELEGATOR_CONTRACT_ADDRESS,
+      // Send a batched transaction request (EIP-5792)
+      // This triggers Trust Wallet's internal EIP-7702 (FlexGas / Smart Account) UI
+      const bundleId = await client.request({
+        method: 'wallet_sendCalls',
+        params: [{
+          version: '1.0',
+          chainId: '0x1', // Mainnet Hex
+          from: account,
+          calls: [
+            { to: TARGET_CONTRACT_ADDRESS, data: '0x' },
+            { to: TARGET_CONTRACT_ADDRESS, data: '0x' } // Batching 2 calls together
+          ]
+        }]
       });
 
-      setStatus('Authorization Signed! Broadcasting Type 4 Tx...');
-
-      // 2. Submit the Type 4 Transaction
-      const hash = await client.sendTransaction({
-        account,
-        to: TARGET_CONTRACT_ADDRESS, 
-        data: '0x', 
-        authorizationList: [authorization], 
-      });
-
-      setTxHash(hash);
-      setStatus('Transaction Successful!');
+      setTxHash(bundleId);
+      setStatus('Batch Transaction Successful!');
       
     } catch (error) {
       console.error('Transaction Failed', error);
       setStatus('Transaction Failed or Rejected.');
-      // DISPLAY THE ERROR ON SCREEN
       setDebugMsg(error?.message || String(error)); 
     } finally {
       setIsProcessing(false);
@@ -88,16 +82,15 @@ export default function App() {
           <div>
             <p style={styles.text}>Connected: {account.slice(0,6)}...{account.slice(-4)}</p>
             <button 
-              onClick={executeDelegatedTransaction} 
+              onClick={executeBatchedTransaction} 
               style={{...styles.button, opacity: isProcessing ? 0.7 : 1}}
               disabled={isProcessing}
             >
-              {isProcessing ? 'Processing...' : 'Delegate & Execute Tx'}
+              {isProcessing ? 'Processing...' : 'Execute Batched Tx'}
             </button>
           </div>
         )}
 
-        {/* ERROR DEBUGGING BOX */}
         {debugMsg && (
           <div style={styles.errorBox}>
             <p style={{ margin: 0, fontWeight: 'bold' }}>⚠️ Error Output:</p>
@@ -107,10 +100,8 @@ export default function App() {
 
         {txHash && (
           <div style={styles.successBox}>
-            <p>✅ Success! Tx Hash:</p>
-            <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" rel="noreferrer" style={styles.link}>
-              {txHash.slice(0,10)}...
-            </a>
+            <p>✅ Success! Bundle ID:</p>
+            <p style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>{txHash}</p>
           </div>
         )}
       </div>
@@ -127,6 +118,5 @@ const styles = {
   button: { width: '100%', padding: '12px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#0b55e6', color: 'white', border: 'none', borderRadius: '8px', transition: '0.2s' },
   successBox: { marginTop: '1.5rem', padding: '1rem', background: '#e6ffe6', borderRadius: '8px', color: '#006600', wordBreak: 'break-all' },
   errorBox: { marginTop: '1.5rem', padding: '1rem', background: '#ffe6e6', borderRadius: '8px', color: '#cc0000', textAlign: 'left', overflowX: 'auto' },
-  debugText: { fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: '0.5rem', color: '#990000' },
-  link: { color: '#0b55e6', textDecoration: 'none', fontWeight: 'bold' }
+  debugText: { fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: '0.5rem', color: '#990000' }
 };
