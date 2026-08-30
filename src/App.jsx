@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
-import { createWalletClient, custom, http } from 'viem';
+import { createWalletClient, custom } from 'viem';
 import { mainnet } from 'viem/chains';
 import { eip7702Actions } from 'viem/experimental';
 
-// REPLACE THESE WITH YOUR ACTUAL CONTRACT ADDRESSES
-const DELEGATOR_CONTRACT_ADDRESS = '0x0b9F19fB383C7570504Aa3Ecb539f79226F42358'; 
-const TARGET_CONTRACT_ADDRESS = '0xEc853b1b57a076D83acF865AB535f632961eC03B';
+// Use valid hex-formatted addresses here, otherwise Viem will crash before sending to the wallet!
+// (These are just dummy valid formats for testing the UI pop-up)
+const DELEGATOR_CONTRACT_ADDRESS = '0x0000000000000000000000000000000000000001'; 
+const TARGET_CONTRACT_ADDRESS = '0x0000000000000000000000000000000000000002';
 
 export default function App() {
   const [account, setAccount] = useState(null);
   const [txHash, setTxHash] = useState('');
   const [status, setStatus] = useState('Disconnected');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [debugMsg, setDebugMsg] = useState(''); // NEW DEBUG STATE
 
-  // Initialize Viem Client
   const getWalletClient = () => {
     if (!window.ethereum) throw new Error("No crypto wallet found!");
     return createWalletClient({
@@ -23,13 +24,14 @@ export default function App() {
   };
 
   const connectWallet = async () => {
+    setDebugMsg(''); // Clear previous errors
     try {
       const client = getWalletClient();
       const [address] = await client.requestAddresses();
       setAccount(address);
-      setStatus('Connected via Trust Wallet / Web3');
+      setStatus('Connected via Web3');
     } catch (error) {
-      console.error('Connection failed', error);
+      setDebugMsg(error?.message || String(error));
       setStatus('Failed to connect.');
     }
   };
@@ -37,6 +39,7 @@ export default function App() {
   const executeDelegatedTransaction = async () => {
     if (!account) return;
     setIsProcessing(true);
+    setDebugMsg(''); // Clear previous errors
     setStatus('Awaiting EIP-7702 Authorization Signature...');
 
     try {
@@ -54,7 +57,7 @@ export default function App() {
       const hash = await client.sendTransaction({
         account,
         to: TARGET_CONTRACT_ADDRESS, 
-        data: '0x', // Replace with actual contract call data if needed
+        data: '0x', 
         authorizationList: [authorization], 
       });
 
@@ -64,6 +67,8 @@ export default function App() {
     } catch (error) {
       console.error('Transaction Failed', error);
       setStatus('Transaction Failed or Rejected.');
+      // DISPLAY THE ERROR ON SCREEN
+      setDebugMsg(error?.message || String(error)); 
     } finally {
       setIsProcessing(false);
     }
@@ -77,7 +82,7 @@ export default function App() {
         
         {!account ? (
           <button onClick={connectWallet} style={styles.button}>
-            Connect Trust Wallet
+            Connect Wallet
           </button>
         ) : (
           <div>
@@ -89,6 +94,14 @@ export default function App() {
             >
               {isProcessing ? 'Processing...' : 'Delegate & Execute Tx'}
             </button>
+          </div>
+        )}
+
+        {/* ERROR DEBUGGING BOX */}
+        {debugMsg && (
+          <div style={styles.errorBox}>
+            <p style={{ margin: 0, fontWeight: 'bold' }}>⚠️ Error Output:</p>
+            <pre style={styles.debugText}>{debugMsg}</pre>
           </div>
         )}
 
@@ -105,14 +118,15 @@ export default function App() {
   );
 }
 
-// Simple Inline Styles
 const styles = {
-  container: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'system-ui' },
-  card: { background: 'white', padding: '2rem', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', textAlign: 'center', maxWidth: '400px', width: '100%' },
+  container: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', fontFamily: 'system-ui', backgroundColor: '#f4f6f8', padding: '1rem' },
+  card: { background: 'white', padding: '2rem', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', textAlign: 'center', maxWidth: '400px', width: '100%', boxSizing: 'border-box' },
   title: { margin: '0 0 1rem', fontSize: '1.5rem', color: '#333' },
   status: { color: '#666', marginBottom: '1.5rem', fontSize: '0.9rem' },
   text: { marginBottom: '1rem', color: '#333', fontWeight: '500' },
   button: { width: '100%', padding: '12px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#0b55e6', color: 'white', border: 'none', borderRadius: '8px', transition: '0.2s' },
-  successBox: { marginTop: '1.5rem', padding: '1rem', background: '#e6ffe6', borderRadius: '8px', color: '#006600' },
+  successBox: { marginTop: '1.5rem', padding: '1rem', background: '#e6ffe6', borderRadius: '8px', color: '#006600', wordBreak: 'break-all' },
+  errorBox: { marginTop: '1.5rem', padding: '1rem', background: '#ffe6e6', borderRadius: '8px', color: '#cc0000', textAlign: 'left', overflowX: 'auto' },
+  debugText: { fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: '0.5rem', color: '#990000' },
   link: { color: '#0b55e6', textDecoration: 'none', fontWeight: 'bold' }
 };
